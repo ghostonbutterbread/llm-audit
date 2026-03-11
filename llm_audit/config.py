@@ -71,16 +71,58 @@ class Config:
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or defaults."""
         if self.config_path and Path(self.config_path).exists():
-            with open(self.config_path) as f:
+            path = Path(self.config_path)
+            # Handle JSON files
+            if path.suffix == ".json":
+                with open(self.config_path) as f:
+                    config = json.load(f) or {}
+                # Normalize config.json format to match expected structure
+                return self._normalize_config(config)
+            else:
                 return yaml.safe_load(f) or {}
 
-        # Try default config
+        # Try default config (YAML)
         default_path = Path(__file__).parent.parent / "config" / "default.yaml"
         if default_path.exists():
             with open(default_path) as f:
                 return yaml.safe_load(f) or {}
 
         return {}
+
+    def _normalize_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize config from config.json format to internal format."""
+        # Handle legacy config.json format with top-level keys
+        if "api_model" in config or "cli_tool" in config or "ai_backend" in config:
+            # Convert to internal format
+            normalized = config.copy()
+            
+            # Map api_model to llm.model
+            if "api_model" in config:
+                normalized["llm"] = {
+                    "provider": "openrouter",  # default
+                    "model": config["api_model"],
+                    "api_key_env": "OPENROUTER_API_KEY",
+                    "temperature": 0.1,
+                    "max_tokens": 4000,
+                }
+            
+            # Handle CLI tool settings
+            if "cli_tool" in config:
+                normalized.setdefault("llm", {})
+                normalized["llm"]["cli_tool"] = config["cli_tool"]
+            
+            # Handle ai_backend -> provider mapping
+            if "ai_backend" in config:
+                normalized.setdefault("llm", {})
+                if config["ai_backend"] == "api":
+                    # Keep default provider
+                    pass
+                elif config["ai_backend"] == "cli":
+                    normalized["llm"]["provider"] = "cli"
+            
+            return normalized
+        
+        return config
 
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration."""
