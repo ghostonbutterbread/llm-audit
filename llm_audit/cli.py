@@ -27,6 +27,8 @@ Examples:
   llm-audit --target /path/to/code --format json
   llm-audit --target owner/repo --model gpt-4o
   llm-audit --target /path/to/code --no-cache
+  llm-audit --target owner/repo --provider cli --model codex
+  llm-audit --target owner/repo --provider cli --model claude
         """
     )
 
@@ -50,12 +52,12 @@ Examples:
 
     parser.add_argument(
         "--model", "-m",
-        help="LLM model to use (overrides config)"
+        help="LLM model to use (overrides config). For --provider cli, use: codex, claude, or aider"
     )
 
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "openrouter"],
+        choices=["openai", "anthropic", "openrouter", "cli"],
         default="openrouter",
         help="LLM provider (default: openrouter)"
     )
@@ -136,8 +138,8 @@ def run_audit(args):
         config.config["llm"] = config.config.get("llm", {})
         config.config["llm"]["provider"] = args.provider
 
-    # Set API key if provided
-    if args.api_key:
+    # Set API key if provided (skip for CLI provider)
+    if args.api_key and args.provider != "cli":
         provider = args.provider or "openrouter"
         env_map = {
             "openrouter": "OPENROUTER_API_KEY",
@@ -145,6 +147,16 @@ def run_audit(args):
             "anthropic": "ANTHROPIC_API_KEY"
         }
         os.environ[env_map.get(provider, "OPENROUTER_API_KEY")] = args.api_key
+
+    # For CLI provider, verify CLI tool is available
+    if args.provider == "cli":
+        from .llm_client import LLMClient
+        available = LLMClient._detect_cli_tools()
+        if not available:
+            print("[!] No CLI tools (codex, claude, aider) found on system.")
+            print("    Install one of: codex, claude, aider")
+            return 1
+        print(f"[*] Using CLI provider with available tools: {', '.join(available)}")
 
     # Step 1: Find CVEs
     cve_data = {"count": 0, "advisories": [], "summary": "Skipped", "target": args.target}

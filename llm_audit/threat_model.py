@@ -68,7 +68,7 @@ Generate a structured threat model in JSON format."""
             pass
 
         # Fallback to structured analysis
-        return self._generate_fallback_model(advisories)
+        return self._generate_fallback_model(advisories, bounty_data)
 
     def _build_cve_summary(self, advisories: List[Dict[str, Any]]) -> str:
         """Build summary text from advisories."""
@@ -212,7 +212,7 @@ Generate a structured threat model in JSON format."""
             "recommendations": "No historical CVEs found. Use comprehensive testing covering common vulnerability classes. Prioritize IDOR, authentication issues, and data leaks based on bug bounty focus areas."
         }
 
-    def _generate_fallback_model(self, advisories: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _generate_fallback_model(self, advisories: List[Dict[str, Any]], bounty_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Generate model from advisory patterns without LLM."""
         bug_classes = {}
 
@@ -255,6 +255,20 @@ Generate a structured threat model in JSON format."""
                     "samples": [],
                     "priority": True
                 }
+
+        # Add bounty program bug classes if available
+        if bounty_data and "error" not in bounty_data:
+            bug_classes_from_bounty = bounty_data.get("bug_classes", [])
+            if bug_classes_from_bounty:
+                for bug in bug_classes_from_bounty:
+                    if bug.upper() not in [b.get("bug_class", "").upper() for b in bug_classes.values()]:
+                        bug_classes[bug] = {
+                            "bug_class": bug,
+                            "severity": "HIGH",
+                            "count": 0,
+                            "samples": [],
+                            "source": "bounty"
+                        }
 
         return {
             "threat_model": list(bug_classes.values()),
