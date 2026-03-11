@@ -1,0 +1,6 @@
+{
+  "api_model": "anthropic/claude-sonnet-4-5",
+  "ai_backend": "api",
+  "cli_tool": "claude",
+  "cli_model": null
+}
