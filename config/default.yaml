@@ -1,0 +1,13 @@
+llm:
+  provider: openrouter
+  model: openrouter/minimax/minimax-m2.5
+  api_key_env: OPENROUTER_API_KEY
+  temperature: 0.1
+  max_tokens: 4000
+
+slicing:
+  max_file_size: 50000
+  target_tokens: 8000
+
+output:
+  dir: reports

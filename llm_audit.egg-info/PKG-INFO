@@ -1,0 +1,145 @@
+Metadata-Version: 2.1
+Name: llm-audit
+Version: 1.0.0
+Summary: LLM-powered vulnerability research tool
+Home-page: https://github.com/ghost/llm-audit
+Author: Ghost
+Author-email: ghost@example.com
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Information Technology
+Classifier: Topic :: Security
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+
+# LLM-Audit
+
+LLM-powered vulnerability research tool that follows a targeted methodology:
+
+1. **Find CVEs** - Get past vulnerability disclosures for the target project
+2. **Generate Threat Model** - Create bug classes from CVE patterns using LLM
+3. **Slice Codebase** - Break the code into manageable chunks to avoid context rot
+4. **Targeted Hunt** - Have LLM analyze each slice for specific vulnerabilities
+
+## Installation
+
+```bash
+cd ~/projects/llm-audit
+pip install -e .
+```
+
+## Prerequisites
+
+- Python 3.9+
+- GitHub CLI (`gh`) installed and authenticated
+- LLM API key (OpenRouter, OpenAI, or Anthropic)
+
+## Configuration
+
+Set your API key:
+
+```bash
+export OPENROUTER_API_KEY="your-key-here"
+# or
+export OPENAI_API_KEY="your-key-here"
+# or
+export ANTHROPIC_API_KEY="your-key-here"
+```
+
+Optional: Create `config/local.yaml` to override defaults.
+
+## Usage
+
+### Basic Usage
+
+```bash
+# Audit a GitHub repository
+llm-audit --target owner/repo
+
+# Audit local code
+llm-audit --target /path/to/project
+
+# Use specific model
+llm-audit --target owner/repo --model gpt-4o
+
+# Output as JSON
+llm-audit --target owner/repo --format json
+
+# Increase analysis depth
+llm-audit --target owner/repo --max-slices 30
+```
+
+### Skip Steps
+
+```bash
+# Skip CVE lookup (faster for repeated scans)
+llm-audit --target owner/repo --skip-cve
+
+# Skip vulnerability hunting (just get threat model)
+llm-audit --target owner/repo --skip-hunt
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-t, --target` | Target GitHub repo (owner/repo) or local path |
+| `-o, --output` | Output directory (default: reports/) |
+| `-f, --format` | Report format: markdown or json |
+| `-m, --model` | LLM model to use |
+| `--provider` | LLM provider: openai, anthropic, openrouter |
+| `--max-slices` | Max code slices to analyze (default: 20) |
+| `--skip-cve` | Skip CVE/advisory lookup |
+| `--skip-hunt` | Skip vulnerability hunting |
+| `-v, --verbose` | Verbose output |
+
+## How It Works
+
+### 1. CVE Discovery
+Uses GitHub Advisory Database API to find past security vulnerabilities for the target repository.
+
+### 2. Threat Modeling
+Analyzes CVE patterns using LLM to generate a targeted threat model - specific bug classes to hunt for based on historical issues.
+
+### 3. Code Slicing
+Breaks the codebase into manageable chunks (files/directories) to avoid LLM context rot. Filters out non-code files and large binaries.
+
+### 4. Targeted Hunting
+For each code slice, prompts the LLM with specific bug classes from the threat model. This targeted approach reduces hallucinations compared to "find all vulnerabilities."
+
+### Priority Focus
+The tool prioritizes bug classes relevant to bug bounty:
+- IDOR (Insecure Direct Object Reference)
+- Authentication Bypass
+- Data Leaks
+- XSS
+- SQL Injection
+
+## Output
+
+Reports are saved to `reports/` with timestamp:
+
+```
+reports/llm_audit_owner_repo_20241015_143022.md
+```
+
+## Architecture
+
+```
+llm_audit/
+├── cli.py          # Main CLI entry point
+├── config.py       # Configuration management
+├── cve_finder.py   # Find CVEs via GitHub API
+├── threat_model.py # Generate threat model from CVEs
+├── slicer.py       # Slice codebase into chunks
+├── hunter.py       # LLM vulnerability hunting
+├── reporter.py     # Generate reports
+└── llm_client.py   # LLM API client
+```
+
+## License
+
+MIT
