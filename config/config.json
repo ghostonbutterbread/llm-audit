@@ -1,6 +1,6 @@
 {
   "api_model": "anthropic/claude-sonnet-4-5",
   "ai_backend": "cli",
-  "cli_tool": "claude",
+  "cli_tool": "codex",
   "cli_model": null
 }
