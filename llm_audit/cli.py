@@ -29,13 +29,22 @@ Examples:
   llm-audit --target /path/to/code --no-cache
   llm-audit --target owner/repo --provider cli --model codex
   llm-audit --target owner/repo --provider cli --model claude
+  llm-audit -t spotify-desktop --target-type desktop
+  llm-audit -t /path/to/app --target-type auto  # auto-detect
         """
     )
 
     parser.add_argument(
         "--target", "-t",
         required=True,
-        help="Target GitHub repo (owner/repo) or local path"
+        help="Target GitHub repo (owner/repo), local path, or desktop application"
+    )
+
+    parser.add_argument(
+        "--target-type", "-T",
+        choices=["web", "desktop", "auto"],
+        default="auto",
+        help="Target type: web application (default), desktop app, or auto-detect"
     )
 
     parser.add_argument(
@@ -123,6 +132,15 @@ def run_audit(args):
     print("LLM-Audit - Vulnerability Research Tool")
     print("=" * 60)
     print(f"[*] Target: {args.target}")
+    
+    # Determine target type
+    if args.target_type == "auto":
+        target_type = Config.detect_target_type(args.target)
+        print(f"[*] Auto-detected target type: {target_type}")
+    else:
+        target_type = args.target_type
+    
+    print(f"[*] Target type: {target_type}")
     print()
 
     # Initialize config
@@ -201,7 +219,8 @@ def run_audit(args):
         threat_model = generate_threat_model(
             cve_data.get("advisories", []), 
             llm_client,
-            bounty_data=bounty_data
+            bounty_data=bounty_data,
+            target_type=target_type
         )
 
         print("    [+] Threat model generated")
@@ -223,7 +242,7 @@ def run_audit(args):
         print("[*] Step 3: Hunting vulnerabilities...")
         try:
             hunter = VulnerabilityHunter(llm_client, config)
-            findings = hunter.hunt(args.target, threat_model, args.max_slices, args.verbose)
+            findings = hunter.hunt(args.target, threat_model, args.max_slices, args.verbose, target_type)
 
             print(f"\n[+] Found {len(findings)} potential issues")
 

@@ -61,6 +61,39 @@ class Config:
         ]
     }
 
+    # Desktop application vulnerability classes
+    DESKTOP_BUG_CLASSES = {
+        "critical": [
+            "Buffer Overflow",
+            "Deserialization Issues",
+            "Improper Input Validation",
+            "SQL Injection",
+        ],
+        "high": [
+            "Cryptographic Failures",
+            "Broken Access Controls",
+            "Insecure Storage",
+            "Command Injection",
+            "Race Conditions",
+        ],
+        "medium": [
+            "Insecure Design",
+            "Information Disclosure",
+            "Security Misconfiguration",
+            "Path Traversal",
+        ],
+        "low": [
+            "Weak Cryptography",
+            "Debug Mode Enabled",
+            "Verbose Error Messages",
+            "Insecure Logging",
+        ]
+    }
+
+    # Desktop file extensions for auto-detection
+    DESKTOP_EXTENSIONS = {".exe", ".dmg", ".app", ".jar", ".msi", ".deb", ".rpm", ".appimage", ".snap"}
+
+    # Priority bugs for bug bounty hunting
     PRIORITY_BUGS = ["data leaks", "401s", "IDORs", "XSS"]
 
     def __init__(self, config_path: Optional[str] = None):
@@ -175,3 +208,87 @@ class Config:
     def get_priority_bugs(cls) -> list:
         """Get priority bugs for bug bounty."""
         return cls.PRIORITY_BUGS
+
+    @classmethod
+    def get_bug_classes_by_target_type(cls, target_type: str) -> dict:
+        """Get bug classes based on target type (web or desktop)."""
+        if target_type == "desktop":
+            return cls.DESKTOP_BUG_CLASSES
+        return cls.BUG_CLASSES
+
+    @classmethod
+    def detect_target_type(cls, target: str) -> str:
+        """Auto-detect target type from target string (path or repo)."""
+        # Check if it's a local path with desktop file extension
+        if os.path.isfile(target):
+            ext = os.path.splitext(target)[1].lower()
+            if ext in cls.DESKTOP_EXTENSIONS:
+                return "desktop"
+        
+        # Check directory for common desktop app markers
+        if os.path.isdir(target):
+            # Check for common desktop app indicators
+            desktop_indicators = [
+                "package.json",  # Electron
+                "Cargo.toml",    # Rust
+                "pom.xml",       # Java
+                "build.gradle",  # Java/Android
+                "setup.py",      # Python
+                "pyproject.toml", # Python
+                "requirements.txt", # Python (could be either)
+                "main.swift",    # Swift
+                "Podfile",       # iOS/macOS
+            ]
+            target_path = Path(target)
+            for indicator in desktop_indicators:
+                if (target_path / indicator).exists():
+                    if indicator in ["package.json"]:
+                        # Check if it's an Electron app
+                        try:
+                            pkg = json.load(open(target_path / "package.json"))
+                            if "main" in pkg or "electron" in str(pkg).lower():
+                                return "desktop"
+                        except:
+                            pass
+                    return "desktop"
+        
+        # Check for common desktop file extensions in the target name
+        target_name = os.path.basename(target).lower()
+        for ext in cls.DESKTOP_EXTENSIONS:
+            if target_name.endswith(ext):
+                return "desktop"
+        
+        # Default to web
+        return "web"
+
+    @classmethod
+    def detect_language_from_path(cls, path: str) -> str:
+        """Detect programming language from file path."""
+        ext = os.path.splitext(path)[1].lower() if '.' in path else ""
+        
+        # Desktop app frameworks
+        if ext == ".py":
+            return "python"
+        elif ext == ".js" or ext == ".mjs":
+            return "javascript"
+        elif ext == ".ts" or ext == ".tsx":
+            return "typescript"
+        elif ext == ".java":
+            return "java"
+        elif ext == ".rs":
+            return "rust"
+        elif ext == ".go":
+            return "go"
+        elif ext in [".swift"]:
+            return "swift"
+        elif ext in [".kt", ".kts"]:
+            return "kotlin"
+        elif ext in [".cpp", ".cc", ".cxx", ".c++"]:
+            return "cpp"
+        elif ext == ".c" or ext == ".h":
+            return "c"
+        elif ext == ".cs":
+            return "csharp"
+        
+        # Generic
+        return "code"
