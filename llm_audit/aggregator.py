@@ -99,10 +99,10 @@ class FindingAggregator:
         
         Uses location + bug_class + issue as the basis for deduplication.
         """
-        # Normalize the data for hashing
-        location = finding.location.lower().strip()
-        bug_class = finding.bug_class.lower().strip()
-        issue = finding.issue.lower().strip()[:100]  # Truncate issue for hashing
+        # Normalize the data for hashing - handle None and empty values
+        location = (finding.location or "").lower().strip() or "unknown"
+        bug_class = (finding.bug_class or "").lower().strip() or "unknown"
+        issue = (finding.issue or "").lower().strip()[:100]  # Truncate issue for hashing
         
         hash_input = f"{location}|{bug_class}|{issue}"
         return hashlib.sha256(hash_input.encode()).hexdigest()
