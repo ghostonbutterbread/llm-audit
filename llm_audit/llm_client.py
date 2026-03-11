@@ -2,6 +2,9 @@
 
 import os
 import json
+import re
+import shutil
+import subprocess
 import requests
 from typing import Optional, Dict, Any, List
 from .config import Config
@@ -16,6 +19,9 @@ class LLMClient:
         "openrouter": "https://openrouter.ai/api/v1/chat/completions",
     }
 
+    # CLI tools that can be used as providers
+    CLI_TOOLS = ["codex", "claude", "aider"]
+
     def __init__(self, config: Optional[Config] = None):
         """Initialize LLM client."""
         self.config = config or Config()
@@ -23,6 +29,33 @@ class LLMClient:
         self.provider = self.config.get_provider()
         self.model = self.config.get_model()
         self.api_key = self.config.get_api_key()
+        
+        # Detect available CLI tools if provider is cli
+        self.available_cli_tools = []
+        if self.provider == "cli":
+            self.available_cli_tools = self._detect_cli_tools()
+            # Auto-select CLI tool based on model if not already set
+            if self.model in self.CLI_TOOLS:
+                self.cli_tool = self.model
+            elif self.available_cli_tools:
+                self.cli_tool = self.available_cli_tools[0]
+            else:
+                self.cli_tool = None
+
+    @staticmethod
+    def _detect_cli_tools() -> List[str]:
+        """Detect which CLI tools are available on the system."""
+        available = []
+        for tool in LLMClient.CLI_TOOLS:
+            if shutil.which(tool):
+                available.append(tool)
+        return available
+
+    def is_cli_available(self, tool: Optional[str] = None) -> bool:
+        """Check if a CLI tool is available."""
+        if tool:
+            return tool in self.available_cli_tools
+        return len(self.available_cli_tools) > 0
 
     def complete(self, prompt: str, system: Optional[str] = None, **kwargs) -> str:
         """Send completion request to LLM."""
@@ -32,6 +65,8 @@ class LLMClient:
             return self._anthropic_complete(prompt, system, **kwargs)
         elif self.provider == "openrouter":
             return self._openrouter_complete(prompt, system, **kwargs)
+        elif self.provider == "cli":
+            return self._cli_complete(prompt, system, **kwargs)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -134,6 +169,112 @@ class LLMClient:
             return result["outputs"][0]["text"]
         else:
             return str(result)
+
+    def _cli_complete(self, prompt: str, system: Optional[str] = None, **kwargs) -> str:
+        """CLI-based completion using local CLI tools (codex, claude, aider)."""
+        if not self.cli_tool:
+            available = self._detect_cli_tools()
+            if not available:
+                raise ValueError("No CLI tools (codex, claude, aider) found on system. Please install one.")
+            raise ValueError(f"No CLI tool selected. Available tools: {available}. Use --model to specify one.")
+
+        # Check if the selected CLI tool is available
+        if self.cli_tool not in self.available_cli_tools:
+            raise ValueError(f"CLI tool '{self.cli_tool}' not found. Available: {self.available_cli_tools}")
+
+        # Build the full prompt with system message if provided
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+
+        try:
+            if self.cli_tool == "codex":
+                return self._codex_complete(full_prompt, **kwargs)
+            elif self.cli_tool == "claude":
+                return self._claude_complete(full_prompt, **kwargs)
+            elif self.cli_tool == "aider":
+                return self._aider_complete(full_prompt, **kwargs)
+            else:
+                raise ValueError(f"Unsupported CLI tool: {self.cli_tool}")
+        except Exception as e:
+            raise Exception(f"CLI ({self.cli_tool}) error: {e}")
+
+    def _codex_complete(self, prompt: str, **kwargs) -> str:
+        """Execute prompt using codex CLI."""
+        # Use --dangerously-bypass-approvals-and-sandbox for non-interactive use
+        # and capture only the final response
+        cmd = [
+            "codex", "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "-o", "/tmp/codex_output.txt",
+            "--",
+            prompt
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=kwargs.get("timeout", 180),
+            cwd=kwargs.get("workdir", os.getcwd())
+        )
+
+        # Read the output file
+        try:
+            with open("/tmp/codex_output.txt", "r") as f:
+                output = f.read()
+        except FileNotFoundError:
+            output = result.stdout
+
+        # Parse the last line as the actual response (codex outputs extra info)
+        lines = output.strip().split('\n')
+        if lines:
+            # Look for the last non-empty line that might be the response
+            for line in reversed(lines):
+                line = line.strip()
+                if line and not line.startswith('tokens used'):
+                    return line
+        return output.strip()
+
+    def _claude_complete(self, prompt: str, **kwargs) -> str:
+        """Execute prompt using claude CLI."""
+        # Use -p for print mode (non-interactive)
+        # Use --dangerously-skip-permissions to run without prompts
+        cmd = ["claude", "-p", "--dangerously-skip-permissions", prompt]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=kwargs.get("timeout", 180),
+            cwd=kwargs.get("workdir", os.getcwd())
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"Claude CLI error: {result.stderr}")
+
+        # Claude -p outputs the response directly
+        return result.stdout.strip()
+
+    def _aider_complete(self, prompt: str, **kwargs) -> str:
+        """Execute prompt using aider CLI."""
+        # Aider can be used with --read or just as a chat interface
+        # Use --no-auto-commits and --pretty to get clean output
+        cmd = [
+            "aider",
+            "--no-auto-commits",
+            "--pretty",
+            "--message", prompt
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=kwargs.get("timeout", 180),
+            cwd=kwargs.get("workdir", os.getcwd())
+        )
+
+        # Aider outputs to stdout
+        return result.stdout.strip()
 
     def complete_with_context(self, prompt: str, code_context: str, bug_class: str, **kwargs) -> str:
         """Complete with code context for vulnerability hunting."""

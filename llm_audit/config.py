@@ -22,6 +22,11 @@ class Config:
         "openrouter": {
             "model": "openrouter/minimax/minimax-m2.5",
             "api_key_env": "OPENROUTER_API_KEY",
+        },
+        "cli": {
+            "model": "codex",  # default CLI tool
+            "cli_tools": ["codex", "claude", "aider"],
+            "api_key_env": None,  # CLI tools handle auth themselves
         }
     }
 
