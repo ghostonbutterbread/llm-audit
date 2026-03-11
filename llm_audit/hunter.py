@@ -57,6 +57,62 @@ If no vulnerabilities are found, respond with:
 {{"bug_class": "{bug_class}", "findings": [], "summary": "No {bug_class} vulnerabilities found in this code slice."}}
 ```"""
 
+    # Desktop-specific hunting prompt
+    DESKTOP_HUNTING_PROMPT = """You are an expert security vulnerability researcher specializing in desktop applications.
+
+Your task is to analyze desktop application code for specific vulnerability types.
+
+THREAT MODEL BUG CLASS: {bug_class}
+
+APPLICATION TYPE: Desktop Application (Python/Electron/Java/Rust/C++)
+CODE SLICE:
+```{language}
+{code}
+```
+
+Desktop-specific considerations:
+- Memory safety issues (buffer overflows, use-after-free)
+- Cryptographic failures (hardcoded keys, weak crypto)
+- Insecure storage (credentials in config files, plaintext passwords)
+- Input validation (file paths, command-line args, network input)
+- Race conditions (file access, concurrent operations)
+- Privilege escalation (missing permission checks)
+- Deserialization issues (pickle, YAML, JSON)
+
+Instructions:
+1. Analyze the code carefully for {bug_class} vulnerabilities
+2. Look for common patterns and anti-patterns in desktop apps
+3. Consider the attack surface: files, network, IPC, CLI args
+4. Assess each finding for exploitability and impact
+
+For each vulnerability found, provide:
+- **Location**: File, function, and line reference
+- **Issue**: Clear description of the vulnerability
+- **Severity**: Critical/High/Medium/Low with justification
+- **Impact**: Potential security impact
+- **PoC**: Simple proof of concept (if applicable)
+
+Respond in this JSON format:
+```json
+{{
+  "bug_class": "{bug_class}",
+  "findings": [
+    {{
+      "location": "path/to/file:function() or line ~42",
+      "issue": "description of the vulnerability",
+      "severity": "High",
+      "impact": "security impact",
+      "poc": "proof of concept code or steps"
+    }}
+  ],
+  "summary": "brief summary of findings"
+}}
+```
+
+If no vulnerabilities are found, respond with:
+```json
+{{"bug_class": "{bug_class}", "findings": [], "summary": "No {bug_class} vulnerabilities found in this code slice."}}"""
+
     def __init__(self, llm_client: Optional[LLMClient] = None, config: Optional[Config] = None):
         """Initialize vulnerability hunter."""
         self.llm_client = llm_client or LLMClient(config)
@@ -64,8 +120,10 @@ If no vulnerabilities are found, respond with:
         self.slicer = CodeSlicer(config)
         self.findings = []
 
-    def hunt(self, target: str, threat_model: Dict[str, Any], max_slices: int = 20, verbose: bool = False) -> List[Dict[str, Any]]:
+    def hunt(self, target: str, threat_model: Dict[str, Any], max_slices: int = 20, verbose: bool = False, target_type: str = "web") -> List[Dict[str, Any]]:
         """Hunt for vulnerabilities in target based on threat model."""
+        self.target_type = target_type  # Store for use in _analyze_slice
+        
         # Get code slices
         print(f"[*] Slicing codebase: {target}")
         slices = self.slicer.slice_target(target)
@@ -135,8 +193,14 @@ If no vulnerabilities are found, respond with:
         # Detect language
         language = self._detect_language(slice_data.get("path", ""))
 
+        # Choose prompt based on target type
+        if hasattr(self, 'target_type') and self.target_type == "desktop":
+            base_prompt = self.DESKTOP_HUNTING_PROMPT
+        else:
+            base_prompt = self.HUNTING_PROMPT
+
         # Build prompt
-        prompt = self.HUNTING_PROMPT.format(
+        prompt = base_prompt.format(
             bug_class=bug_class,
             code=content[:15000],  # Limit context
             language=language
@@ -240,8 +304,17 @@ def hunt_vulnerabilities(
     target: str,
     threat_model: Dict[str, Any],
     llm_client: Optional[LLMClient] = None,
-    config: Optional[Config] = None
+    config: Optional[Config] = None,
+    target_type: str = "web"
 ) -> List[Dict[str, Any]]:
-    """Convenience function to hunt for vulnerabilities."""
+    """Convenience function to hunt for vulnerabilities.
+    
+    Args:
+        target: Target repo or path
+        threat_model: Threat model from generate_threat_model
+        llm_client: LLM client instance
+        config: Config instance
+        target_type: Target type - "web" or "desktop"
+    """
     hunter = VulnerabilityHunter(llm_client, config)
-    return hunter.hunt(target, threat_model)
+    return hunter.hunt(target, threat_model, target_type=target_type)
