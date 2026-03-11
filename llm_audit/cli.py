@@ -67,8 +67,8 @@ Examples:
     parser.add_argument(
         "--provider",
         choices=["openai", "anthropic", "openrouter", "cli"],
-        default="openrouter",
-        help="LLM provider (default: openrouter)"
+        default="cli",
+        help="LLM provider (default: cli)"
     )
 
     parser.add_argument(
