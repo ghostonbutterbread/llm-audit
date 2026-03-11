@@ -31,6 +31,8 @@ Examples:
   llm-audit --target owner/repo --provider cli --model claude
   llm-audit -t spotify-desktop --target-type desktop
   llm-audit -t /path/to/app --target-type auto  # auto-detect
+  llm-audit -t owner/repo --agents 5  # use 5 parallel agents
+  llm-audit -t owner/repo --agents 3 --cli-tool claude
         """
     )
 
@@ -109,6 +111,20 @@ Examples:
     parser.add_argument(
         "--api-key",
         help="API key (or set via OPENROUTER_API_KEY, OPENAI_API_KEY, etc.)"
+    )
+
+    parser.add_argument(
+        "--agents", "-a",
+        type=int,
+        default=3,
+        help="Number of parallel agents for vulnerability hunting (default: 3, max: 10)"
+    )
+
+    parser.add_argument(
+        "--cli-tool",
+        choices=["codex", "claude", "aider"],
+        default="codex",
+        help="CLI tool to use for parallel agents (default: codex)"
     )
 
     return parser
@@ -240,9 +256,38 @@ def run_audit(args):
 
     if not args.skip_hunt:
         print("[*] Step 3: Hunting vulnerabilities...")
+        
+        # Determine if we should use parallel mode
+        use_parallel = args.agents > 1
+        max_agents = min(max(args.agents, 1), 10)  # Clamp to 1-10
+        
+        if use_parallel:
+            print(f"[*] Using parallel mode with {max_agents} agents")
+            print(f"[*] CLI tool: {args.cli_tool}")
+        
         try:
             hunter = VulnerabilityHunter(llm_client, config)
-            findings = hunter.hunt(args.target, threat_model, args.max_slices, args.verbose, target_type)
+            
+            if use_parallel:
+                # Use parallel agent hunting
+                findings = hunter.hunt_parallel(
+                    args.target, 
+                    threat_model, 
+                    max_slices=args.max_slices,
+                    max_agents=max_agents,
+                    verbose=args.verbose, 
+                    target_type=target_type,
+                    cli_tool=args.cli_tool
+                )
+            else:
+                # Use sequential hunting
+                findings = hunter.hunt(
+                    args.target, 
+                    threat_model, 
+                    args.max_slices, 
+                    args.verbose, 
+                    target_type
+                )
 
             print(f"\n[+] Found {len(findings)} potential issues")
 

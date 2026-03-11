@@ -1,6 +1,7 @@
 README.md
 setup.py
 llm_audit/__init__.py
+llm_audit/bounty_finder.py
 llm_audit/cli.py
 llm_audit/config.py
 llm_audit/cve_finder.py
